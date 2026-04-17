@@ -4,130 +4,96 @@ function selectCharacter(char) {
     character = char;
     document.getElementById('start-screen').classList.remove('active');
     document.getElementById('difficulty-screen').classList.add('active');
-    document.getElementById('diff-title').textContent = 'Jugar contra ' + (char === 'agnes' ? 'Agnes' : 'Rick');
+    document.getElementById('diff-title').textContent = 'Contra ' + (char === 'agnes' ? 'Agnes' : 'Rick');
     
     const diffs = char === 'agnes' 
-        ? [['easy','Fácil'], ['medium','Normal'], ['hard','Difícil'], ['extreme','Extremo'], ['mega','Mega Extremo']]
+        ? [['easy','Fácil'], ['medium','Normal'], ['hard','Difícil'], ['extreme','Extremo'], ['mega','Mega']]
         : [['easy','Fácil'], ['medium','Normal'], ['hard','Difícil'], ['extreme','Extremo']];
     
     const container = document.getElementById('diff-buttons');
     container.innerHTML = '';
-    
     diffs.forEach(([diff, name]) => {
         const btn = document.createElement('button');
         btn.textContent = name;
-        btn.style.cssText = 'padding:15px 25px; font-size:1.2rem; cursor:pointer; border-radius:10px; border:none; background:#27ae60; color:white;';
-        btn.onclick = function() { startGame(diff); };
+        btn.style.background = '#27ae60'; btn.style.color = 'white';
+        btn.onclick = () => startGame(diff);
         container.appendChild(btn);
     });
 }
 
 function startGame(difficulty) {
-    game = new ChessEngine();
+    game = new ChessEngine(); // Asegúrate que el archivo se llame chess-engine.js
     ai = new ChessAI(difficulty, character);
-    player = 'w';
-    
     document.getElementById('difficulty-screen').classList.remove('active');
     document.getElementById('game-screen').classList.add('active');
-    
     drawBoard();
-    updateStatus();
 }
 
 function drawBoard() {
     const board = document.getElementById('board');
     board.innerHTML = '';
-    
-    for(let row=0; row<8; row++) {
-        for(let col=0; col<8; col++) {
+    for(let r=0; r<8; r++) {
+        for(let c=0; c<8; c++) {
             const div = document.createElement('div');
-            div.className = 'square ' + ((row+col)%2===0 ? 'light' : 'dark');
-            div.dataset.r = row;
-            div.dataset.c = col;
-            
-            const piece = game.getPiece(row, col);
+            div.className = `square ${(r+c)%2===0 ? 'light' : 'dark'}`;
+            const piece = game.getPiece(r, c);
             if(piece) {
-                const symbols = {w:{k:'♔',q:'♕',r:'♖',b:'♗',n:'♘',p:'♙'},b:{k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'}};
-                div.textContent = symbols[piece.color][piece.type];
+                const syms = {w:{k:'♔',q:'♕',r:'♖',b:'♗',n:'♘',p:'♙'},b:{k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'}};
+                div.textContent = syms[piece.color][piece.type];
             }
-            
-            if(selected && selected.row===row && selected.col===col) div.classList.add('selected');
-            if(validMoves.some(m => m.row===row && m.col===col)) div.classList.add('valid-move');
-            
-            div.onclick = () => clickSquare(row, col);
+            if(selected && selected.row===r && selected.col===c) div.classList.add('selected');
+            if(validMoves.some(m => m.row===r && m.col===c)) div.classList.add('valid-move');
+            div.onclick = () => clickSquare(r, c);
             board.appendChild(div);
         }
     }
 }
 
-function clickSquare(row, col) {
+function clickSquare(r, c) {
     if(game.turn !== player) return;
-    
-    const piece = game.getPiece(row, col);
-    
+    const piece = game.getPiece(r, c);
     if(selected) {
-        const move = validMoves.find(m => m.row===row && m.col===col);
+        const move = validMoves.find(m => m.row===r && m.col===c);
         if(move) {
-            doMove(selected, move);
+            // Promoción automática
+            if (game.getPiece(selected.row, selected.col).type === 'p' && (r === 0 || r === 7)) {
+                move.promotion = 'q';
+            }
+            executeMove(selected, move);
             return;
         }
     }
-    
-    if(piece && piece.color===player) {
-        selected = {row, col};
-        validMoves = game.getValidMoves(row, col);
-        drawBoard();
-    } else {
-        selected = null;
-        validMoves = [];
+    if(piece && piece.color === player) {
+        selected = {row: r, col: c};
+        validMoves = game.getValidMoves(r, c);
         drawBoard();
     }
 }
 
-function doMove(from, to) {
+function executeMove(from, to) {
     game.makeMove({from, to});
-    selected = null;
-    validMoves = [];
+    selected = null; validMoves = [];
     drawBoard();
-    
+    if(!checkEnd()) {
+        document.getElementById('status').textContent = "Pensando...";
+        setTimeout(() => {
+            const aiMove = ai.makeMove(game);
+            if(aiMove) game.makeMove(aiMove);
+            drawBoard();
+            document.getElementById('status').textContent = "Tu turno";
+            checkEnd();
+        }, 600);
+    }
+}
+
+function checkEnd() {
     const state = game.getGameState();
     if(state.status !== 'ongoing') {
-        setTimeout(() => alert(state.status === 'checkmate' ? (state.winner===player ? '¡Ganaste!' : 'Perdiste') : 'Tablas'), 100);
-        return;
+        alert(state.status === 'checkmate' ? "¡Jaque Mate!" : "Tablas");
+        return true;
     }
-    
-    updateStatus();
-    
-    if(game.turn !== player) {
-        setTimeout(aiMove, 500);
-    }
+    return false;
 }
 
-function aiMove() {
-    const move = ai.makeMove(game);
-    if(move) {
-        game.makeMove(move);
-        drawBoard();
-        updateStatus();
-        const state = game.getGameState();
-        if(state.status !== 'ongoing') {
-            setTimeout(() => alert(state.status === 'checkmate' ? (state.winner===player ? '¡Ganaste!' : 'Perdiste') : 'Tablas'), 100);
-        }
-    }
-}
-
-function updateStatus() {
-    document.getElementById('status').textContent = game.turn===player ? 'Tu turno' : (character==='agnes'?'Agnes piensa...':'Rick piensa...');
-}
-
-function resetGame() {
-    if(confirm('¿Nueva partida?')) {
-        document.getElementById('game-screen').classList.remove('active');
-        document.getElementById('start-screen').classList.add('active');
-    }
-}
-
-function goBack() {
-    document.getElementById('difficulty-screen').classList.remove('active');
-    document.getElementById('start-screen').classList.add('active');
-}
+function resetGame() { location.reload(); }
+function goBack() { location.reload(); }
